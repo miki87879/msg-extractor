@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, Response
 import tempfile
 import os
+import re
 import extract_msg
 
 app = Flask(__name__)
@@ -27,7 +28,10 @@ def extract_pdf():
         msg = extract_msg.Message(temp_path)
 
         attachment_list = []
-        pdf_found = False
+        body_text = msg.body or ""
+        subject = msg.subject or ""
+        sender = msg.sender or ""
+        msg_date = str(msg.date) if msg.date else ""
 
         for attachment in msg.attachments:
             filename = getattr(attachment, "longFilename", None) or getattr(attachment, "shortFilename", None) or "attachment.bin"
@@ -39,21 +43,43 @@ def extract_pdf():
             })
 
             if filename and filename.lower().endswith(".pdf") and data:
-                pdf_found = True
                 return Response(
                     data,
                     mimetype="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'}
                 )
 
+        # אם אין PDF - מחפשים קישור לחשבונית בתוך גוף המייל
+        urls = re.findall(r'https?://[^\s<>"\']+', body_text)
+
+        invoice_url = None
+        for url in urls:
+            lowered = url.lower()
+            if any(keyword in lowered for keyword in [
+                "icount",
+                "invoice",
+                "receipt",
+                "print",
+                "docemail",
+                "p_print",
+                "greeninvoice",
+                "morning",
+                "rivhit",
+                "meshulam"
+            ]):
+                invoice_url = url
+                break
+
         return jsonify({
             "error": "No PDF found inside MSG",
-            "subject": msg.subject,
-            "sender": msg.sender,
-            "date": str(msg.date),
-            "body_preview": (msg.body[:1000] if msg.body else ""),
+            "subject": subject,
+            "sender": sender,
+            "date": msg_date,
+            "body_preview": body_text[:2000],
             "attachments": attachment_list,
-            "pdf_found": pdf_found
+            "pdf_found": False,
+            "invoice_url": invoice_url,
+            "all_urls": urls[:20]
         }), 404
 
     finally:
