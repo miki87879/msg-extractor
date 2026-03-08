@@ -85,6 +85,7 @@ def extract_pdf():
         invoice_url = filtered_urls[0] if filtered_urls else None
 
         return jsonify({
+            "status": "link_found",
             "error": "No PDF found inside MSG",
             "subject": subject,
             "sender": sender,
@@ -95,7 +96,7 @@ def extract_pdf():
             "invoice_url": invoice_url,
             "all_urls": urls[:20],
             "filtered_urls": filtered_urls[:20]
-        }), 404
+        })
 
     finally:
         if temp_path and os.path.exists(temp_path):
