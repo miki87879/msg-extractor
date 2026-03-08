@@ -26,7 +26,11 @@ def extract_urls_from_text(body_text: str):
             "docemail",
             "icount",
             "hash",
-            "print"
+            "print",
+            "ezcount",
+            "files.ezcount.co.il",
+            "/front/documents/get",
+            "documents/get"
         ]):
             filtered_urls.append(url)
 
