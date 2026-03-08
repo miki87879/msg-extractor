@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify
 import tempfile
 import os
 import re
+import base64
 import extract_msg
 
 app = Flask(__name__)
@@ -43,7 +44,7 @@ def inspect_msg_file(msg_path: str, depth: int = 0):
 
     attachment_list = []
 
-    # 1. קודם מחפשים PDF ישיר
+    # 1. חיפוש PDF ישיר
     for attachment in msg.attachments:
         long_name = getattr(attachment, "longFilename", None)
         short_name = getattr(attachment, "shortFilename", None)
@@ -59,10 +60,14 @@ def inspect_msg_file(msg_path: str, depth: int = 0):
             return {
                 "type": "pdf",
                 "filename": filename,
-                "data": data
+                "data": data,
+                "subject": subject,
+                "sender": sender,
+                "date": msg_date,
+                "attachments": attachment_list
             }
 
-    # 2. מחפשים URL לחשבונית בגוף ההודעה
+    # 2. חיפוש קישור לחשבונית
     all_urls, filtered_urls, invoice_url = extract_urls_from_text(body_text)
     if invoice_url:
         return {
@@ -78,7 +83,7 @@ def inspect_msg_file(msg_path: str, depth: int = 0):
             "filtered_urls": filtered_urls
         }
 
-    # 3. אם אין PDF ואין לינק - מחפשים MSG פנימי
+    # 3. חיפוש MSG פנימי
     if depth < 2:
         for attachment in msg.attachments:
             long_name = getattr(attachment, "longFilename", None)
@@ -105,7 +110,6 @@ def inspect_msg_file(msg_path: str, depth: int = 0):
                     if nested_temp_path and os.path.exists(nested_temp_path):
                         os.remove(nested_temp_path)
 
-    # 4. אם לא מצאנו כלום
     return {
         "type": "none",
         "subject": subject,
@@ -148,18 +152,21 @@ def extract_pdf():
         result = inspect_msg_file(temp_path)
 
         if result["type"] == "pdf":
-            return Response(
-                result["data"],
-                mimetype="application/pdf",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{result["filename"]}"'
-                }
-            )
+            pdf_base64 = base64.b64encode(result["data"]).decode("utf-8")
+            return jsonify({
+                "status": "pdf_embedded",
+                "filename": result["filename"],
+                "pdf_base64": pdf_base64,
+                "subject": result.get("subject"),
+                "sender": result.get("sender"),
+                "date": result.get("date"),
+                "attachments": result.get("attachments"),
+                "nested_from": result.get("nested_from")
+            })
 
         if result["type"] == "link":
             return jsonify({
                 "status": "link_found",
-                "error": "No PDF found inside MSG",
                 "subject": result.get("subject"),
                 "sender": result.get("sender"),
                 "date": result.get("date"),
@@ -174,7 +181,6 @@ def extract_pdf():
 
         return jsonify({
             "status": "no_invoice_found",
-            "error": "No PDF or invoice link found inside MSG",
             "subject": result.get("subject"),
             "sender": result.get("sender"),
             "date": result.get("date"),
