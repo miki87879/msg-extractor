@@ -9,7 +9,10 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return {"status": "ok", "message": "MSG extractor is running"}
+    return jsonify({
+        "status": "ok",
+        "message": "MSG extractor is running"
+    })
 
 
 @app.route("/extract-pdf", methods=["POST"])
@@ -22,11 +25,13 @@ def extract_pdf():
     if uploaded_file.filename == "":
         return jsonify({"error": "Empty filename"}), 400
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".msg") as temp_file:
-        uploaded_file.save(temp_file.name)
-        temp_path = temp_file.name
+    temp_path = None
 
     try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".msg") as temp_file:
+            uploaded_file.save(temp_file.name)
+            temp_path = temp_file.name
+
         msg = extract_msg.Message(temp_path)
 
         attachment_list = []
@@ -36,11 +41,9 @@ def extract_pdf():
         msg_date = str(msg.date) if msg.date else ""
 
         for attachment in msg.attachments:
-            filename = (
-                getattr(attachment, "longFilename", None)
-                or getattr(attachment, "shortFilename", None)
-                or "attachment.bin"
-            )
+            long_name = getattr(attachment, "longFilename", None)
+            short_name = getattr(attachment, "shortFilename", None)
+            filename = long_name or short_name or "attachment.bin"
             data = getattr(attachment, "data", None)
 
             attachment_list.append({
@@ -48,7 +51,7 @@ def extract_pdf():
                 "has_data": data is not None
             })
 
-            if filename and filename.lower().endswith(".pdf") and data:
+            if filename.lower().endswith(".pdf") and data:
                 return Response(
                     data,
                     mimetype="application/pdf",
@@ -60,10 +63,12 @@ def extract_pdf():
         urls = re.findall(r'https?://[^\s<>"\']+', body_text)
 
         filtered_urls = []
+        blocked_extensions = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]
+
         for url in urls:
             lowered = url.lower()
 
-            if any(lowered.endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]):
+            if any(lowered.endswith(ext) for ext in blocked_extensions):
                 continue
 
             if any(keyword in lowered for keyword in [
@@ -93,118 +98,10 @@ def extract_pdf():
         }), 404
 
     finally:
-        if os.path.exists(temp_path):
+        if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)            filename = getattr(attachment, "longFilename", None) or getattr(attachment, "shortFilename", None) or "attachment.bin"
-            data = getattr(attachment, "data", None)
-
-            attachment_list.append({
-                "filename": filename,
-                "has_data": data is not None
-            })
-
-            if filename and filename.lower().endswith(".pdf") and data:
-                return Response(
-                    data,
-                    mimetype="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-                )
-
-        urls = re.findall(r'https?://[^\s<>"\']+', body_text)
-
-        filtered_urls = []
-        for url in urls:
-            lowered = url.lower()
-
-            # לדלג על תמונות וקבצים לא רלוונטיים
-            if any(lowered.endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]):
-                continue
-
-            # עדיפות גבוהה לקישורי חשבונית
-            if any(keyword in lowered for keyword in [
-                "p_print",
-                "invoice",
-                "receipt",
-                "docemail",
-                "icount",
-                "hash",
-                "print"
-            ]):
-                filtered_urls.append(url)
-
-        invoice_url = filtered_urls[0] if filtered_urls else None
-
-        return jsonify({
-            "error": "No PDF found inside MSG",
-            "subject": subject,
-            "sender": sender,
-            "date": msg_date,
-            "body_preview": body_text[:2000],
-            "attachments": attachment_list,
-            "pdf_found": False,
-            "invoice_url": invoice_url,
-            "all_urls": urls[:20],
-            "filtered_urls": filtered_urls[:20]
-        }), 404
-
-    finally:
-        os.remove(temp_path)
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)            filename = getattr(attachment, "longFilename", None) or getattr(attachment, "shortFilename", None) or "attachment.bin"
-            data = getattr(attachment, "data", None)
-
-            attachment_list.append({
-                "filename": filename,
-                "has_data": data is not None
-            })
-
-            if filename and filename.lower().endswith(".pdf") and data:
-                return Response(
-                    data,
-                    mimetype="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-                )
-
-        # אם אין PDF - מחפשים קישור לחשבונית בתוך גוף המייל
-        urls = re.findall(r'https?://[^\s<>"\']+', body_text)
-
-        invoice_url = None
-        for url in urls:
-            lowered = url.lower()
-            if any(keyword in lowered for keyword in [
-                "icount",
-                "invoice",
-                "receipt",
-                "print",
-                "docemail",
-                "p_print",
-                "greeninvoice",
-                "morning",
-                "rivhit",
-                "meshulam"
-            ]):
-                invoice_url = url
-                break
-
-        return jsonify({
-            "error": "No PDF found inside MSG",
-            "subject": subject,
-            "sender": sender,
-            "date": msg_date,
-            "body_preview": body_text[:2000],
-            "attachments": attachment_list,
-            "pdf_found": False,
-            "invoice_url": invoice_url,
-            "all_urls": urls[:20]
-        }), 404
-
-    finally:
-        os.remove(temp_path)
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
